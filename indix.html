@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inversiones CTEC - Gestor de Préstamos</title>
+  <style>
+    :root {
+      --bg: #f4f4f4;
+      --text: #2c3e50;
+      --card: #fff;
+    }
+    body.dark {
+      --bg: #1e1e1e;
+      --text: #f1f1f1;
+      --card: #2c2c2c;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 20px;
+      transition: 0.3s;
+    }
+    h1 {
+      text-align: center;
+    }
+    .contenedor {
+      max-width: 900px;
+      margin: auto;
+      background: var(--card);
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    label {
+      font-weight: bold;
+    }
+    input, select {
+      width: 100%;
+      padding: 8px;
+      margin: 5px 0 15px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background: var(--bg);
+      color: var(--text);
+    }
+    button {
+      background: #27ae60;
+      color: #fff;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    button:hover { background: #219150; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+    .factura {
+      display: none;
+      background: var(--card);
+      padding: 20px;
+      margin-top: 20px;
+    }
+    .modo-oscuro-btn {
+      float: right;
+      background: #444;
+    }
+  </style>
+</head>
+<body>
+  <h1>Inversiones CTEC</h1>
+  <button class="modo-oscuro-btn" onclick="toggleModoOscuro()">Modo Oscuro</button>
+
+  <div class="contenedor">
+    <h2>Registro de Préstamo</h2>
+    <form id="formPrestamo">
+      <label>Nombre del cliente:</label>
+      <input type="text" id="nombre" required>
+
+      <label>Cédula:</label>
+      <input type="text" id="cedula" required>
+
+      <label>Teléfono:</label>
+      <input type="text" id="telefono">
+
+      <label>Dirección:</label>
+      <input type="text" id="direccion">
+
+      <label>Fecha del préstamo:</label>
+      <input type="date" id="fechaPrestamo" required>
+
+      <label>Capital solicitado (RD$):</label>
+      <input type="number" id="capital" required>
+
+      <label>Tasa de interés (% quincenal):</label>
+      <input type="number" id="tasa" value="10" required>
+
+      <label>Número de cuotas quincenales:</label>
+      <input type="number" id="cuotas" required>
+
+      <button type="button" onclick="calcularPrestamo()">Calcular y Guardar</button>
+    </form>
+
+    <div id="resultado"></div>
+
+    <div class="factura" id="factura">
+      <h3>Factura de Préstamo</h3>
+      <div id="detalleFactura"></div>
+      <button onclick="imprimirFactura()">Imprimir/Guardar PDF</button>
+    </div>
+
+    <h2>Listado de Clientes y Pagarés</h2>
+    <button onclick="borrarTodo()" style="background:red;">Eliminar Todos los Datos</button>
+    <table>
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th>Cédula</th>
+          <th>Capital</th>
+          <th>Cuotas</th>
+          <th>Pendientes</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="listaClientes"></tbody>
+    </table>
+  </div>
+
+  <script>
+    function calcularPrestamo() {
+      const nombre = document.getElementById('nombre').value;
+      const cedula = document.getElementById('cedula').value;
+      const telefono = document.getElementById('telefono').value;
+      const direccion = document.getElementById('direccion').value;
+      const fechaPrestamo = document.getElementById('fechaPrestamo').value;
+      const capital = parseFloat(document.getElementById('capital').value);
+      const tasa = parseFloat(document.getElementById('tasa').value) / 100;
+      const cuotas = parseInt(document.getElementById('cuotas').value);
+
+      if (!capital || !cuotas || !fechaPrestamo) {
+        alert('Por favor, complete todos los campos.');
+        return;
+      }
+
+      const interesTotal = capital * tasa * cuotas;
+      const totalPagar = capital + interesTotal;
+      const valorCuota = totalPagar / cuotas;
+
+      // Crear calendario de pagos
+      let pagos = [];
+      let fecha = new Date(fechaPrestamo);
+      for(let i=1; i<=cuotas; i++){
+        fecha.setDate(fecha.getDate() + 15); // quincenal
+        pagos.push({ cuota:i, fecha:fecha.toISOString().split('T')[0], pagado:false });
+      }
+
+      const cliente = { nombre, cedula, telefono, direccion, fechaPrestamo, capital, tasa, cuotas, valorCuota, totalPagar, pagos };
+      let clientes = JSON.parse(localStorage.getItem('clientesCTEC')) || [];
+      clientes.push(cliente);
+      localStorage.setItem('clientesCTEC', JSON.stringify(clientes));
+      mostrarClientes();
+      generarFactura(cliente);
+    }
+
+    function mostrarClientes(){
+      let clientes = JSON.parse(localStorage.getItem('clientesCTEC')) || [];
+      let lista = '';
+      clientes.forEach((c, i) => {
+        const pendientes = c.pagos.filter(p=>!p.pagado).length;
+        lista += `<tr>
+          <td>${c.nombre}</td>
+          <td>${c.cedula}</td>
+          <td>RD$ ${c.capital.toFixed(2)}</td>
+          <td>${c.cuotas}</td>
+          <td>${pendientes}</td>
+          <td>
+            <button onclick='generarFactura(${JSON.stringify(c)})'>Factura</button>
+            <button onclick='marcarPago(${i})'>Marcar Pago</button>
+          </td>
+        </tr>`;
+      });
+      document.getElementById('listaClientes').innerHTML = lista;
+    }
+
+    function marcarPago(index){
+      let clientes = JSON.parse(localStorage.getItem('clientesCTEC')) || [];
+      let cliente = clientes[index];
+      const pendiente = cliente.pagos.find(p=>!p.pagado);
+      if(pendiente){
+        pendiente.pagado = true;
+        alert(`Cuota ${pendiente.cuota} pagada!`);
+      } else {
+        alert('Ya no hay cuotas pendientes');
+      }
+      localStorage.setItem('clientesCTEC', JSON.stringify(clientes));
+      mostrarClientes();
+    }
+
+    function generarFactura(cliente){
+      document.getElementById('factura').style.display = 'block';
+      let listaPagos = '<ul>';
+      cliente.pagos.forEach(p=>{
+        listaPagos += `<li>Cuota ${p.cuota}: ${p.fecha} - ${p.pagado?"✅ Pagado":"❌ Pendiente"}</li>`;
+      });
+      listaPagos += '</ul>';
+
+      document.getElementById('detalleFactura').innerHTML = `
+        <p><b>Cliente:</b> ${cliente.nombre}</p>
+        <p><b>Cédula:</b> ${cliente.cedula}</p>
+        <p><b>Fecha del préstamo:</b> ${cliente.fechaPrestamo}</p>
+        <p><b>Capital:</b> RD$ ${cliente.capital.toFixed(2)}</p>
+        <p><b>Cuotas:</b> ${cliente.cuotas}</p>
+        <p><b>Valor de cada cuota:</b> RD$ ${cliente.valorCuota.toFixed(2)}</p>
+        <p><b>Total a pagar:</b> RD$ ${cliente.totalPagar.toFixed(2)}</p>
+        <h4>Calendario de pagos:</h4>
+        ${listaPagos}
+      `;
+    }
+
+    function imprimirFactura(){
+      const contenido = document.getElementById('factura').innerHTML;
+      const ventana = window.open('', '', 'width=800,height=600');
+      ventana.document.write('<html><head><title>Factura</title></head><body>');
+      ventana.document.write(contenido);
+      ventana.document.write('</body></html>');
+      ventana.document.close();
+      ventana.print();
+    }
+
+    function borrarTodo(){
+      if(confirm('¿Seguro que deseas eliminar todos los datos?')){
+        localStorage.removeItem('clientesCTEC');
+        mostrarClientes();
+        alert('Todos los datos han sido eliminados.');
+      }
+    }
+
+    function toggleModoOscuro(){
+      document.body.classList.toggle('dark');
+    }
+
+    mostrarClientes();
+  </script>
+</body>
+</html>
